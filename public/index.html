@@ -32,6 +32,11 @@
         margin: 0;
         word-break: break-all;
       }
+      .note {
+        margin: 2px 0 0;
+        font-size: 13px;
+        color: #555;
+      }
       pre {
         padding: 8px;
         background: #f0f0f0;
@@ -57,7 +62,10 @@
 
     <button id="subscribe">구독</button>
     <button id="unsubscribe">구독 취소</button>
-    <button id="send">테스트 알림 보내기</button>
+
+    <h2>테스트 알림</h2>
+    <label><input type="checkbox" id="delay" /> 10초 뒤에 보내기 (앱을 닫거나 화면을 끄고 받아 보기)</label>
+    <div id="presets"></div>
 
     <h2>기록</h2>
     <pre id="log"></pre>

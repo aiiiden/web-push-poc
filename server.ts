@@ -1,5 +1,7 @@
 import { sendNotification, WebPushError } from "web-push";
-import type { PushSubscription } from "web-push";
+import type { PushSubscription, RequestOptions } from "web-push";
+import { buildPayload, presets } from "./notification-presets";
+import type { NotificationPreset } from "./notification-presets";
 
 const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = process.env;
 
@@ -22,10 +24,14 @@ interface SendResult {
   status: number | string;
 }
 
-async function sendTo(subscription: PushSubscription, payload: string): Promise<SendResult> {
+async function sendTo(
+  subscription: PushSubscription,
+  payload: string,
+  options: RequestOptions,
+): Promise<SendResult> {
   const pushService = new URL(subscription.endpoint).host;
   try {
-    const response = await sendNotification(subscription, payload, { vapidDetails, TTL: 60 });
+    const response = await sendNotification(subscription, payload, options);
     return { pushService, status: response.statusCode };
   } catch (error) {
     if (error instanceof WebPushError) {
@@ -39,6 +45,16 @@ async function sendTo(subscription: PushSubscription, payload: string): Promise<
   }
 }
 
+async function sendPreset(preset: NotificationPreset): Promise<SendResult[]> {
+  const payload = buildPayload(preset);
+  const options = { vapidDetails, TTL: 60, ...preset.push };
+  const results = await Promise.all(
+    [...subscriptions.values()].map((subscription) => sendTo(subscription, payload, options)),
+  );
+  console.log(new Date().toLocaleTimeString("ko-KR"), preset.id, JSON.stringify(results));
+  return results;
+}
+
 function staticFile(name: string, headers: Record<string, string> = {}) {
   return new Response(Bun.file(new URL(`./public/${name}`, import.meta.url)), { headers });
 }
@@ -49,10 +65,16 @@ const server = Bun.serve({
     "/": () => staticFile("index.html"),
     "/app.js": () => staticFile("app.js"),
     "/manifest.webmanifest": () => staticFile("manifest.webmanifest"),
+    "/icon.png": () => staticFile("icon.png"),
+    "/badge.png": () => staticFile("badge.png"),
+    "/image.png": () => staticFile("image.png"),
     // 서비스 워커는 캐시되면 수정한 내용이 반영되지 않는다
     "/sw.js": () => staticFile("sw.js", { "Cache-Control": "no-cache" }),
 
     "/api/vapid-public-key": () => Response.json({ publicKey: VAPID_PUBLIC_KEY }),
+
+    "/api/presets": () =>
+      Response.json({ presets: presets.map(({ id, label, note }) => ({ id, label, note })) }),
 
     "/api/subscribe": {
       POST: async (request) => {
@@ -74,16 +96,26 @@ const server = Bun.serve({
     },
 
     "/api/send-test": {
-      POST: async () => {
-        const payload = JSON.stringify({
-          title: "web-push-poc",
-          body: `테스트 알림 ${new Date().toLocaleTimeString("ko-KR")}`,
-          url: "/",
-        });
-        const results = await Promise.all(
-          [...subscriptions.values()].map((subscription) => sendTo(subscription, payload)),
-        );
-        return Response.json({ results });
+      POST: async (request) => {
+        const { presetId, delaySeconds = 0 } = (await request.json()) as {
+          presetId?: string;
+          delaySeconds?: number;
+        };
+        const preset = presets.find(({ id }) => id === presetId);
+        if (!preset) {
+          return Response.json({ error: "알 수 없는 알림 유형이에요" }, { status: 400 });
+        }
+        if (subscriptions.size === 0) {
+          return Response.json({ error: "서버에 구독이 없어요. 먼저 구독하세요" }, { status: 409 });
+        }
+
+        // 앱을 닫거나 화면을 끈 상태에서 받아 보려면 누른 뒤에 시간이 필요하다
+        const delay = Math.min(Math.max(Number(delaySeconds) || 0, 0), 60);
+        if (delay > 0) {
+          setTimeout(() => void sendPreset(preset), delay * 1000);
+          return Response.json({ scheduledInSeconds: delay });
+        }
+        return Response.json({ results: await sendPreset(preset) });
       },
     },
   },

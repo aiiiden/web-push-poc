@@ -72,19 +72,48 @@ async function unsubscribe() {
   log("구독을 취소했어요");
 }
 
-async function sendTest() {
+async function sendTest(presetId) {
   // 서버를 다시 켜면 서버 쪽 구독이 사라지므로 보내기 전에 다시 알려 준다
   const subscription = await currentSubscription();
   if (subscription) await postJson("/api/subscribe", subscription.toJSON());
 
-  const { results } = await postJson("/api/send-test");
-  if (results.length === 0) {
-    log("서버에 구독이 없어요. 먼저 구독하세요");
+  const delaySeconds = $("delay").checked ? 10 : 0;
+  const { results, scheduledInSeconds, error } = await postJson("/api/send-test", {
+    presetId,
+    delaySeconds,
+  });
+  if (error) {
+    log(error);
+    return;
+  }
+  if (scheduledInSeconds) {
+    log(`${presetId}: ${scheduledInSeconds}초 뒤에 보내요`);
     return;
   }
   for (const { pushService, status } of results) {
-    log(`발송 결과: ${pushService} → ${status} (201이면 푸시 서비스가 받았다는 뜻)`);
+    log(`${presetId}: ${pushService} → ${status} (201이면 푸시 서비스가 받았다는 뜻)`);
   }
+}
+
+async function renderPresets() {
+  const { presets } = await (await fetch("/api/presets")).json();
+  for (const { id, label, note } of presets) {
+    const button = document.createElement("button");
+    button.id = `send-${id}`;
+    button.textContent = label;
+    button.disabled = !supported;
+    const description = document.createElement("p");
+    description.className = "note";
+    description.textContent = note;
+    $("presets").append(button, description);
+    if (supported) bind(button.id, () => sendTest(id));
+  }
+}
+
+// 알림을 눌러서 열렸으면 어떤 주소로 열렸는지 보여 준다
+function logLaunchParams() {
+  const params = new URLSearchParams(location.search);
+  if (params.size > 0) log(`알림으로 열림: ${location.search}`);
 }
 
 function bind(id, action) {
@@ -102,9 +131,11 @@ if (supported) {
   await navigator.serviceWorker.register("/sw.js");
   bind("subscribe", subscribe);
   bind("unsubscribe", unsubscribe);
-  bind("send", sendTest);
 } else {
-  for (const id of ["subscribe", "unsubscribe", "send"]) $(id).disabled = true;
+  for (const id of ["subscribe", "unsubscribe"]) $(id).disabled = true;
 }
+
+await renderPresets();
+logLaunchParams();
 
 await render();

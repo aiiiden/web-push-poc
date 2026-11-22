@@ -3,25 +3,27 @@ self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
 self.addEventListener("push", (event) => {
-  const data = event.data?.json() ?? {};
+  const { title = "web-push-poc", options = {}, url = "/" } = event.data?.json() ?? {};
   // waitUntil 안에서 알림을 띄우지 않으면 브라우저가 워커를 먼저 끝낼 수 있다
-  event.waitUntil(
-    self.registration.showNotification(data.title ?? "web-push-poc", {
-      body: data.body,
-      data: { url: data.url ?? "/" },
-    }),
-  );
+  event.waitUntil(self.registration.showNotification(title, { ...options, data: { url } }));
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = new URL(event.notification.data?.url ?? "/", self.location.origin).href;
+
+  const target = new URL(event.notification.data?.url ?? "/", self.location.origin);
+  // 버튼을 눌렀으면 어느 버튼인지 페이지가 알 수 있게 주소에 붙인다
+  if (event.action) target.searchParams.set("action", event.action);
+
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      const open = windows.find((client) => client.url === url);
-      if (open) return open.focus();
-      return self.clients.openWindow(url);
+      const open = windows[0];
+      if (open) {
+        await open.focus();
+        return open.navigate(target.href);
+      }
+      return self.clients.openWindow(target.href);
     })(),
   );
 });
