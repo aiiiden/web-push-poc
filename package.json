@@ -1,0 +1,17 @@
+{
+  "name": "web-push-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "keys": "bun scripts/generate-keys.ts",
+    "dev": "bun --watch server.ts",
+    "start": "bun server.ts"
+  },
+  "dependencies": {
+    "web-push": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/web-push": "latest"
+  }
+}

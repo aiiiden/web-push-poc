@@ -1,0 +1,8 @@
+{
+  "name": "web-push-poc",
+  "short_name": "push-poc",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff"
+}
